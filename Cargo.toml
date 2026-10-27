@@ -1,0 +1,16 @@
+[package]
+name = "real"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+glob = "0.3.4"
+inputbot = "0.6.0"
+serde = { version = "1.0.229", features = ["derive"]}
+serde_json = "1.0.154"
+winit = "0.30.13"
+xml = "1.4.0"
+
+[[bin]]
+name = "real"
+path = "main.rs"
