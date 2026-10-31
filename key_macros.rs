@@ -5,6 +5,7 @@ use crate::{journal::{GameState, JournalReader}, key_macros};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use inputbot::{KeySequence, KeybdKey};
 use inputbot::KeybdKey::*;
+use winit::keyboard::NamedKey::LaunchScreenSaver;
 use std::sync::mpsc;
 
 use std::fs::File;
@@ -16,7 +17,7 @@ struct Bindings
 {
     pub up: KeybdKey,
     pub down: KeybdKey,
-    pub menu_left: KeybdKey,
+    pub left: KeybdKey,
     pub right: KeybdKey,
     pub select: KeybdKey,
     pub back: KeybdKey,
@@ -27,7 +28,7 @@ impl Default for Bindings
 {
     fn default() -> Self
     {
-        Bindings { up: WKey, down: SKey, menu_left: AKey, right: DKey, select: SpaceKey, back: BackspaceKey, galmap: MKey }
+        Bindings { up: WKey, down: SKey, left: AKey, right: DKey, select: SpaceKey, back: BackspaceKey, galmap: MKey }
     }
 }
 
@@ -288,7 +289,7 @@ impl Bindings
                                 {
                                     if let Some(key) = Bindings::str_to_key(attribute.value.to_string())
                                     {
-                                        bindings.menu_left = key;
+                                        bindings.left = key;
                                     }
                                 }
                             }
@@ -471,10 +472,19 @@ fn press_key(key: inputbot::KeybdKey, times: usize)
     for _ in 0..times
     {
         key.press();
-        sleep_ms(100);
+        sleep_ms(50);
         key.release();
         sleep_ms(100);
     }
+}
+
+fn left_click(x: i32, y: i32)
+{
+    inputbot::MouseCursor::move_abs(x, y);
+    inputbot::MouseButton::LeftButton.press();
+    sleep_ms(100);
+    inputbot::MouseButton::LeftButton.release();
+    sleep_ms(100);
 }
 
 fn hold_key(key: inputbot::KeybdKey, times: usize, duration: u64)
@@ -488,15 +498,33 @@ fn hold_key(key: inputbot::KeybdKey, times: usize, duration: u64)
     }
 }
 
+fn check_journal(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: &mpsc::Receiver<bool>) -> Option<GameState>
+{
+    // return if cancelled
+    if cancel_channel.try_recv().is_ok()
+    {
+        None
+    }
+    // lock gamestate
+    else if let Ok(game_state) = game_state_mutex.lock()
+    {
+        Some(game_state.clone())
+    }
+    else
+    {
+        None
+    }
+}
+
 // FC route macro
-pub fn fc_auto_route(game_state_mutex: Arc<Mutex<GameState>>, gs_channel: mpsc::Receiver<bool>)
+pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: mpsc::Receiver<bool>, res_x: i32, res_y: i32)
 {
     // try to get custom bindings, otherwise use default
     let bindings = Bindings::get_custom_or_default();
     let mut last_game_state = GameState::new();
 
     // get clipboard context
-    if let Ok(ctx) = ClipboardContext::new()
+    if let Ok(mut ctx) = ClipboardContext::new()
     {
         loop
         {
@@ -506,12 +534,33 @@ pub fn fc_auto_route(game_state_mutex: Arc<Mutex<GameState>>, gs_channel: mpsc::
                 last_game_state = game_state.clone();
             }
 
+            // if not docked with carrier, wait until we are
+            if !last_game_state.docked || last_game_state.docked_carrier_id.is_none()
+            {
+                println!("Not docked with carrier, waiting for docking...");
+                while !last_game_state.docked || last_game_state.docked_carrier_id.is_none()
+                {
+                    if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
+                    {
+                        last_game_state = game_state;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                    sleep_ms(100);
+                }
+                println!("Docking detected, beginning route...");
+                sleep_ms(10000);
+            }
+
             // if in docking menu
             if last_game_state.music_track != "FleetCarrier_Managment" && last_game_state.music_track != "GalaxyMap"
             {
+                println!("In docking menu");
                 press_key(bindings.back, 2);
                 press_key(bindings.up, 3);
-                press_key(bindings.down, 3);
+                press_key(bindings.down, 1);
                 press_key(bindings.select, 1);
 
                 // wait for carrier services
@@ -522,42 +571,261 @@ pub fn fc_auto_route(game_state_mutex: Arc<Mutex<GameState>>, gs_channel: mpsc::
                 press_key(bindings.select, 1);
 
                 // wait for transition to carrier management
-                while last_game_state.music_track != "FleetCarrier_Managment"
                 {
-                    // lock gamestate
-                    if let Ok(game_state) = game_state_mutex.lock()
+                    let mut timeout = 0;
+                    while last_game_state.music_track != "FleetCarrier_Managment" && timeout < 100
                     {
-                        last_game_state = game_state.clone();
+                        if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
+                        {
+                            last_game_state = game_state;
+                        }
+                        else
+                        {
+                            return;
+                        }
+                        sleep_ms(100);
+                        timeout += 1;
                     }
-                    sleep_ms(100);
+                    sleep_ms(5000);
                 }
-                sleep_ms(5000);
             }
 
             // if in carrier management
             if last_game_state.music_track == "FleetCarrier_Managment"
             {
+                println!("In carrier management");
                 press_key(bindings.up, 13);
                 press_key(bindings.down, 1);
                 press_key(bindings.select, 2);
 
                 // wait for transition to map screen
-                while last_game_state.music_track != "GalaxyMap"
+                let mut timeout = 0;
+                while last_game_state.music_track != "GalaxyMap" && timeout < 100
                 {
-                    // lock gamestate
-                    if let Ok(game_state) = game_state_mutex.lock()
+                    if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
                     {
-                        last_game_state = game_state.clone();
+                        last_game_state = game_state;
+                    }
+                    else
+                    {
+                        return;
                     }
                     sleep_ms(100);
+                    timeout += 1;
                 }
-                sleep_ms(1000);
             }
 
             // if in map screen
-            if last_game_state.music_track == "GalaxyMap"
+            if let Some(docked_carrier_id) = last_game_state.docked_carrier_id
             {
+                sleep_ms(1000);
+                if last_game_state.music_track == "GalaxyMap" && last_game_state.docked_carrier_id.is_some()
+                {
+                    println!("In galaxy map");
+                    // get clipboard contents
+                    if let Ok(clipboard) = ctx.get_contents()
+                    {
+                        let mut target = "".to_string();
+                        if let Some(docked_carrier) = last_game_state.carriers.get(&docked_carrier_id)
+                        {
+                            // end of route
+                            if docked_carrier.star_system == clipboard
+                            {
+                                println!("End of route");
+                                return;
+                            }
+                            if let Some(target_system) = &docked_carrier.target_system
+                            {
+                                target = target_system.clone();
+                            }
+                        }
+                        while target != clipboard
+                        {
+                            // if we are not already jumping to target, plot a course
+                            println!("Plotting a course for {}", clipboard);
+                            // click system search bar
+                            left_click(res_x / 2, res_y / 8);
+                            // paste system name
+                            LControlKey.press();
+                            press_key(VKey, 1);
+                            LControlKey.release();
+                            // wait for results
+                            sleep_ms(1000);
+                            // click on first result
+                            left_click(res_x / 2, res_y / 7);
+                            left_click(res_x / 4 * 3, res_y / 8 * 3);
+
+                            // wait for carrier jump request
+                            let mut timeout = 0;
+                            while target != clipboard && timeout < 20
+                            {
+                                if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
+                                {
+                                    last_game_state = game_state;
+                                }
+                                else
+                                {
+                                    return;
+                                }
+                                sleep_ms(100);
+                                // check new carrier target
+                                if let Some(docked_carrier) = last_game_state.carriers.get(&docked_carrier_id)
+                                {
+                                    if let Some(ref docked_carrier_target) = docked_carrier.target_system
+                                    {
+                                        target = docked_carrier_target.clone();
+                                    }
+                                }
+                                timeout += 1;
+                            }
+                        }
+                        sleep_ms(1000);
+                    }
+                }
+                // return to docking menu
+                press_key(bindings.back, 2);
+                // wait for fleet carrier management screen
+                while last_game_state.music_track != "FleetCarrier_Managment"
+                {
+                    if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
+                    {
+                        last_game_state = game_state;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                    sleep_ms(100);
+                }
+                sleep_ms(5000);
+                press_key(bindings.back, 1);
+
+                // wait for docking menu
+                while last_game_state.music_track == "FleetCarrier_Managment" || last_game_state.music_track == "GalaxyMap"
+                {
+                    if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
+                    {
+                        last_game_state = game_state;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                    sleep_ms(100);
+                }
+            }
+
+            // if in docking menu after carrier jump requested
+            if last_game_state.music_track != "FleetCarrier_Managment" && last_game_state.music_track != "GalaxyMap"
+            {
+                // load tritium until fuel is above 300
+                println!("Loading tritium");
+                let mut low_fuel = true;
+                let mut timeout = 0;
+                while low_fuel && timeout < 5
+                {
+                    if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
+                    {
+                        last_game_state = game_state;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                    sleep_ms(1000);
                 
+                    if let Some(docked_carrier_id) = last_game_state.docked_carrier_id
+                    {
+                        if let Some(docked_carrier) = last_game_state.carriers.get(&docked_carrier_id)
+                        {
+                            low_fuel = docked_carrier.fuel_level < 300;
+                        }
+                        // open commodities market
+                        // press_key(bindings.select, 1);
+                        // sleep_ms(5000);
+                        press_key(bindings.right, 2);
+                        press_key(bindings.select, 1);
+                        sleep_ms(1000);
+                        
+                        // buy as much tritium as possible
+                        press_key(bindings.right, 1);
+                        press_key(bindings.select, 1);
+                        hold_key(bindings.right, 1, 3000);
+                        press_key(bindings.down, 1);
+                        press_key(bindings.select, 1);
+                        sleep_ms(1000);
+                        press_key(bindings.back, 1);
+                        sleep_ms(1000);
+                        press_key(bindings.back, 1);
+                        sleep_ms(1000);
+                        press_key(bindings.back, 1);
+                        sleep_ms(1000);
+
+                        // load tritium in carrier
+                        press_key(bindings.select, 1);
+                        sleep_ms(5000);
+                        press_key(bindings.down, 2);
+                        press_key(bindings.select, 1);
+                        sleep_ms(1000);
+                        press_key(bindings.select, 1);
+                        sleep_ms(1000);
+                        press_key(bindings.up, 1);
+                        press_key(bindings.select, 1);
+                        sleep_ms(3000);
+
+                        // exit to docking menu
+                        press_key(bindings.back, 1);
+                        sleep_ms(1000);
+                        press_key(bindings.back, 1);
+                        sleep_ms(1000);
+                        press_key(bindings.back, 1);
+                        sleep_ms(1000);
+                        press_key(bindings.back, 1);
+                        sleep_ms(1000);
+                    }
+                    timeout += 1;
+                }
+                
+                // wait for jump to finish
+                println!("Waiting for jump...");
+                let mut carrier_arrived = false;
+                while !carrier_arrived
+                {
+                    if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
+                    {
+                        last_game_state = game_state;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                    sleep_ms(1000);
+                    if let Some(docked_carrier_id) = last_game_state.docked_carrier_id
+                    {
+                        if let Some(docked_carrier) = last_game_state.carriers.get(&docked_carrier_id)
+                        {
+                            if let Some(ref target_system) = docked_carrier.target_system
+                            {
+                                carrier_arrived = target_system == &docked_carrier.star_system;
+                            }
+                        }
+                    }
+                }
+
+                // wait 3 minutes for carrier navigation to unlock
+                println!("Waiting for cooldown");
+                for _ in 0..250
+                {
+                    if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
+                    {
+                        last_game_state = game_state;
+                    }
+                    else
+                    {
+                        return;
+                    }
+                    sleep_ms(1000);
+                }
             }
         }
     }

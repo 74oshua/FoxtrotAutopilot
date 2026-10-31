@@ -1,5 +1,7 @@
-use std::thread::{self, JoinHandle};
+use std::ops::Deref;
+use std::thread::{self, JoinHandle, sleep};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::key_macros::MacroChannels;
 use crate::{journal::{GameState, JournalReader}};
@@ -17,7 +19,6 @@ struct App
     // journal_reader: Option<JournalReader>,
     // game_state: GameState,
     // key_macros: KeyMacros,
-    journal_reader: Option<JournalReader>,
     game_state_mutex: Arc<Mutex<GameState>>,
     macro_channels: MacroChannels
 }
@@ -28,47 +29,57 @@ impl App
     {
         App {
             // journal_reader: JournalReader::new().ok(), game_state: GameState::new(), key_macros: KeyMacros::new(),
-            journal_reader: JournalReader::new().ok(), game_state_mutex: Arc::new(Mutex::new(GameState::new())),
+            game_state_mutex: Arc::new(Mutex::new(GameState::new())),
             macro_channels: MacroChannels::default()
         }
     }
 
     fn init(&mut self)
     {
-        // read journal to present
-        if let Some(ref mut journal_reader) = self.journal_reader
-        {
-            // update game state according to journal until caught up
-            while !journal_reader.is_current()
-            {
-                journal_reader.update_journal(Arc::clone(&self.game_state_mutex));
-            }
-            println!("Journal reader is up to date");
-        }
-
         // spawn thread to continuously update journal
         let game_state = Arc::clone(&self.game_state_mutex);
         thread::spawn(move || {
-            loop
+            let game_state = &game_state;
+            if let Ok(mut journal_reader) = JournalReader::new()
             {
-                if let Ok(mut journal_reader) = JournalReader::new()
+                let mut current = false;
+                loop
                 {
-                    journal_reader.update_journal(Arc::clone(&game_state));
+                    if let Err(_) = journal_reader.update_journal(&game_state)
+                    {
+                        print!("Error reading journal");
+                    }
+                    if !current
+                    {
+                        if let Ok(gs) = game_state.lock()
+                        {
+                            if gs.current
+                            {
+                                current = true;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        sleep(Duration::from_millis(10));
+                    }
                 }
             }
         });
-    }
-    
-    fn update(&mut self)
-    {
-        // read journal to present
-        if let Some(ref mut journal_reader) = self.journal_reader
+
+        // wait for journal to be current
+        loop
         {
-            loop
+            if let Ok(game_state) = self.game_state_mutex.lock()
             {
-                journal_reader.update_journal(Arc::clone(&self.game_state_mutex));
+                if game_state.current
+                {
+                    break;
+                }
             }
+            sleep(Duration::from_millis(100));
         }
+        println!("Journal up to date");
     }
 }
 
@@ -109,19 +120,22 @@ impl ApplicationHandler for App
             // if F2 pressed
             // toggle trade macro
             DeviceEvent::Key (
-                RawKeyEvent { physical_key: PhysicalKey::Code(KeyCode::F2), state: ElementState::Released }
+                RawKeyEvent { physical_key: PhysicalKey::Code(KeyCode::F3), state: ElementState::Released }
              ) =>
              {
-                println!("F2 pressed");
+                let mut run_macro = true;
                 // if already running, cancel
                 if let Some(ref mut trade_macro_cancel) = self.macro_channels.fc_route_cancel
                 {
-                    let _ = trade_macro_cancel.send(true);
+                    if trade_macro_cancel.send(true).is_ok()
+                    {
+                        run_macro = false;
+                    }
                     self.macro_channels.fc_route_cancel = None;
-                    println!("Trade macro cancelled");
+                    println!("Macro cancelled");
                 }
                 // otherwise, run
-                else
+                if run_macro
                 {
                     let game_state = Arc::clone(&self.game_state_mutex);
                     let (tx, rx) = mpsc::channel();
@@ -129,8 +143,8 @@ impl ApplicationHandler for App
                     thread::spawn(
                         move || {
                             println!("Running FC macro...");
-                            key_macros::fc_auto_route(Arc::clone(&game_state), rx);
-                            println!("Trade FC ended");
+                            key_macros::fc_auto_route(&game_state, rx, 2560, 1440);
+                            println!("FC macro ended");
                         }
                     );
                 }

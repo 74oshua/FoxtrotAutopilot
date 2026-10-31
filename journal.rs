@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::{self, BufRead, Error};
 use glob::glob;
 use serde::Deserialize;
+use xml::name;
 
 // information about a fleet carrier
 #[derive(Clone)]
@@ -22,6 +23,7 @@ pub struct Carrier
     pub name: String,
     pub callsign: String,
     pub star_system: String,
+    pub target_system: Option<String>,
     pub fuel_level: u32
 }
 
@@ -29,7 +31,7 @@ impl Default for Carrier
 {
     fn default() -> Self
     {
-        Carrier { carrier_type: CarrierType::Unknown, name: "".to_string(), callsign: "".to_string(), star_system: "".to_string(), fuel_level: 0 }
+        Carrier { carrier_type: CarrierType::Unknown, name: "".to_string(), callsign: "".to_string(), star_system: "".to_string(), target_system: None, fuel_level: 0 }
     }
 }
 
@@ -37,8 +39,12 @@ impl Default for Carrier
 #[derive(Clone)]
 pub struct GameState
 {
-    pub fsd_target: String,
+    pub current: bool,
+    pub fsd_target: Option<String>,
     pub music_track: String,
+    pub docked: bool,
+    pub station_name: Option<String>,
+    pub docked_carrier_id: Option<u32>,
     pub carriers: HashMap<u32, Carrier>,
     pub last_event: String,
 }
@@ -49,10 +55,14 @@ impl GameState
     {
         GameState
         {
-            fsd_target: "".to_string(),
+            current: false,
+            fsd_target: None,
             music_track: "".to_string(),
+            docked: false,
+            station_name: None,
+            docked_carrier_id: None,
             carriers: HashMap::new(),
-            last_event: "".to_string()
+            last_event: "".to_string(),
         }
     }
 }
@@ -87,21 +97,29 @@ struct EDEvent
     #[serde(rename(deserialize = "StarSystem"))]
     star_system: Option<String>,
     #[serde(rename(deserialize = "FuelLevel"))]
-    fuel_level: Option<u32>
+    fuel_level: Option<u32>,
+    #[serde(rename(deserialize = "SystemName"))]
+    system_name: Option<String>,
+    #[serde(rename(deserialize = "Docked"))]
+    docked: Option<bool>,
+    #[serde(rename(deserialize = "StationName"))]
+    station_name: Option<String>,
+    #[serde(rename(deserialize = "StationType"))]
+    station_type: Option<String>,
 }
 
 pub struct JournalReader
 {
     journal_iter: Option<io::Lines<io::BufReader<File>>>,
     // whether or not the journal has caught up to the present
-    current: bool,
+    // current: bool,
 }
 
 impl Default for JournalReader
 {
     fn default() -> Self
     {
-        JournalReader { journal_iter: None, current: false }
+        JournalReader { journal_iter: None }
     }
 }
 
@@ -139,8 +157,9 @@ impl JournalReader
                     let current_journal_name = &journal_file_list[journal_file_list.len()-1];
 
                     // open newest journal file and return iterator
+                    println!("Found journal file: {}", current_journal_name);
                     let file = File::open(current_journal_name)?;
-                    Ok(JournalReader { journal_iter: Some(io::BufReader::new(file).lines()), current: false })
+                    Ok(JournalReader { journal_iter: Some(io::BufReader::new(file).lines()) })
                 }
                 else
                 {
@@ -158,7 +177,7 @@ impl JournalReader
         }
     }
 
-    pub fn update_journal(&mut self, game_state_mut: Arc<Mutex<GameState>>) -> Result<(), Error>
+    pub fn update_journal(&mut self, game_state_mut: &Arc<Mutex<GameState>>) -> Result<(), Error>
     {
         if let Ok(mut game_state) = game_state_mut.lock()
         {
@@ -179,59 +198,151 @@ impl JournalReader
                         // test: print event
                         // println!("{}: {}", event.timestamp, event.event);
                         // set FSD target
-                        if event.event == "FSDTarget"
+                        match event.event.as_str()
                         {
-                            if let Some(fsd_target) = event.name
+                            "FSDTarget" =>
                             {
-                                game_state.fsd_target = fsd_target;
-                            }
-                            else
-                            {
-                                println!("error getting FSD target");
-                            }
-                        }
-                        else if event.event == "Music"
-                        {
-                            if let Some(music_track) = event.music_track
-                            {
-                                game_state.music_track = music_track;
-                            }
-                            else
-                            {
-                                println!("error getting music track");
-                            }
-                        }
-                        else if event.event == "CarrierStats" || event.event == "CarrierLocation"
-                        {
-                            if let Some(carrier_id) = event.carrier_id
-                            {
-                                if let Some(name) = event.name
+                                if let Some(fsd_target) = event.name
                                 {
-                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).name = name;
+                                    game_state.fsd_target = Some(fsd_target);
                                 }
-                                if let Some(carrier_type) = event.carrier_type
+                                else
                                 {
-                                    let ctype = match &carrier_type[..]
+                                    println!("Error getting FSD target");
+                                }
+                            },
+                            "Music" =>
+                            {
+                                if let Some(music_track) = event.music_track
+                                {
+                                    match music_track.as_str()
                                     {
-                                        "FleetCarrier" => CarrierType::FleetCarrier,
-                                        "SquadronCarrier" => CarrierType::SquadronCarrier,
-                                        _ => CarrierType::Unknown
-                                    };
-                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).carrier_type = ctype;
+                                        "DestinationFromHyperspace" => 
+                                        {
+                                            game_state.fsd_target = None;
+                                        },
+                                        _ => ()
+                                    }
+                                    game_state.music_track = music_track;
                                 }
-                                if let Some(callsign) = event.callsign
+                                else
                                 {
-                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).callsign = callsign;
+                                    println!("Error getting music track");
                                 }
-                                if let Some(star_system) = event.star_system
+                            },
+                            "CarrierStats" | "CarrierLocation" | "CarrierJumpRequest" =>
+                            {
+                                if let Some(carrier_id) = event.carrier_id
                                 {
-                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).star_system = star_system;
+                                    // update jump destination
+                                    if let Some(system_name) = event.system_name
+                                    {
+                                        game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).target_system = Some(system_name);
+                                    }
+                                    if let Some(name) = event.name
+                                    {
+                                        game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).name = name;
+                                    }
+                                    if let Some(carrier_type) = event.carrier_type
+                                    {
+                                        let ctype = match &carrier_type[..]
+                                        {
+                                            "FleetCarrier" => CarrierType::FleetCarrier,
+                                            "SquadronCarrier" => CarrierType::SquadronCarrier,
+                                            _ => CarrierType::Unknown
+                                        };
+                                        game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).carrier_type = ctype;
+                                    }
+                                    if let Some(callsign) = event.callsign
+                                    {
+                                        game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).callsign = callsign;
+                                    }
+                                    if let Some(star_system) = event.star_system
+                                    {
+                                        game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).star_system = star_system;
+                                    }
+                                    if let Some(fuel_level) = event.fuel_level
+                                    {
+                                        game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).fuel_level = fuel_level;
+                                    }
                                 }
-                                if let Some(fuel_level) = event.fuel_level
+                            },
+                            "CarrierJump" =>
+                            {
+                                if let Some(carrier_id) = event.carrier_id
                                 {
-                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).fuel_level = fuel_level;
+                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).target_system = None;
                                 }
                             }
+                            "CarrierJumpCancelled" =>
+                            {
+                                if let Some(carrier_id) = event.carrier_id
+                                {
+                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).target_system = None;
+                                }
+                            },
+                            "Location" =>
+                            {
+                                if let Some(docked) = event.docked
+                                {
+                                    game_state.docked = docked;
+                                    if game_state.docked
+                                    {
+                                        if let Some(station_name) = event.station_name
+                                        {
+                                            if let Some(station_type) = event.station_type
+                                            {
+                                                if station_type == "FleetCarrier"
+                                                {
+                                                    for carrier in &game_state.carriers
+                                                    {
+                                                        if carrier.1.callsign == station_name
+                                                        {
+                                                            game_state.docked_carrier_id = Some(*carrier.0);
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            game_state.station_name = Some(station_name);
+                                        }
+                                        else
+                                        {
+                                            game_state.station_name = None;
+                                            game_state.docked_carrier_id = None;
+                                        }
+                                    }
+                                }
+                            },
+                            "Docked" =>
+                            {
+                                game_state.docked = true;
+                                if let Some(station_name) = event.station_name
+                                {
+                                    if let Some(station_type) = event.station_type
+                                    {
+                                        if station_type == "FleetCarrier"
+                                        {
+                                            for carrier in &game_state.carriers
+                                            {
+                                                if carrier.1.callsign == station_name
+                                                {
+                                                    game_state.docked_carrier_id = Some(*carrier.0);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    game_state.station_name = Some(station_name);
+                                }
+                            },
+                            "Undocked" =>
+                            {
+                                game_state.docked = false;
+                                game_state.docked_carrier_id = None;
+                                game_state.station_name = None;
+                            },
+                            _ => ()
                         }
                     }
                 }
@@ -244,23 +355,18 @@ impl JournalReader
                     //         println!("Carrier Name: {}, Callsign: {}, Location: {}, Fuel Level: {}/1000", carrier.name, carrier.callsign, carrier.star_system, carrier.fuel_level);
                     //     }
                     // }
-                    self.current = true;
+                    game_state.current = true;
                 }
                 Ok(())
             }
             else
             {
-                Err(Error::new(io::ErrorKind::InvalidData, "journal reader not initialized".to_string()))
+                Err(Error::new(io::ErrorKind::InvalidData, "Journal reader not initialized".to_string()))
             }
         }
         else
         {
-            Err(Error::new(io::ErrorKind::InvalidData, "could not lock mutex".to_string()))
+            Err(Error::new(io::ErrorKind::InvalidData, "Could not lock mutex".to_string()))
         }
-    }
-
-    pub fn is_current(&self) -> bool
-    {
-        self.current
     }
 }
