@@ -513,7 +513,7 @@ fn check_journal(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: &mpsc
 }
 
 // FC route macro
-pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: mpsc::Receiver<bool>, res_x: i32, res_y: i32)
+pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: mpsc::Receiver<bool>, res_x: i32, res_y: i32, pos_x: i32, pos_y: i32)
 {
     // try to get custom bindings, otherwise use default
     let bindings = Bindings::get_custom_or_default();
@@ -640,7 +640,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                             // if we are not already jumping to target, plot a course
                             println!("Plotting a course for {}", clipboard);
                             // click system search bar
-                            left_click(res_x / 2, res_y / 8);
+                            left_click(pos_x + res_x / 2, pos_y + res_y / 8);
                             // paste system name
                             LControlKey.press();
                             press_key(VKey, 1);
