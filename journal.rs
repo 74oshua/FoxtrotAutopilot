@@ -5,7 +5,6 @@ use std::fs::File;
 use std::io::{self, BufRead, Error};
 use glob::glob;
 use serde::Deserialize;
-use xml::name;
 
 // information about a fleet carrier
 #[derive(Clone)]

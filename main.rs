@@ -1,12 +1,11 @@
-use std::ops::Deref;
-use std::thread::{self, JoinHandle, sleep};
+use std::thread::{self, sleep};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::key_macros::MacroChannels;
 use crate::{journal::{GameState, JournalReader}};
-use winit::{application::ApplicationHandler, event::{self, DeviceEvent, RawKeyEvent}, event_loop::{self, ActiveEventLoop, EventLoop}, keyboard::KeyCode::KeyC, window::{Window, WindowAttributes}};
-use winit::event::{ElementState, KeyEvent, WindowEvent};
+use winit::{application::ApplicationHandler, event::{self, DeviceEvent, RawKeyEvent}, event_loop::{self, ActiveEventLoop, EventLoop} };
+use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use std::sync::mpsc;
 
@@ -85,7 +84,7 @@ impl App
 
 impl ApplicationHandler for App
 {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop)
+    fn resumed(&mut self, _event_loop: &ActiveEventLoop)
     {
         println!("Program initializing...");
         self.init();
@@ -94,7 +93,7 @@ impl ApplicationHandler for App
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: winit::window::WindowId,
+        _window_id: winit::window::WindowId,
         event: event::WindowEvent,
     )
     {
@@ -110,8 +109,8 @@ impl ApplicationHandler for App
 
     fn device_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
-        device_id: event::DeviceId,
+        _event_loop: &ActiveEventLoop,
+        _device_id: event::DeviceId,
         event: event::DeviceEvent,
     )
     {

@@ -1,17 +1,16 @@
-use std::{env::var_os, fmt::Debug, io::BufReader, path::{Path, PathBuf}, thread::sleep, time::Duration};
+use std::{env::var_os, io::BufReader, path::{PathBuf}, thread::sleep, time::Duration};
 use std::sync::{Arc, Mutex};
 
-use crate::{journal::{GameState, JournalReader}, key_macros};
+use crate::{journal::{GameState}};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
-use inputbot::{KeySequence, KeybdKey};
+use inputbot::{KeybdKey};
 use inputbot::KeybdKey::*;
-use winit::keyboard::NamedKey::LaunchScreenSaver;
 use std::sync::mpsc;
 
 use std::fs::File;
-use std::io::{self, BufRead, Error};
+use std::io::{self};
 use glob::glob;
-use xml::{attribute, reader::{EventReader, XmlEvent}};
+use xml::{reader::{EventReader, XmlEvent}};
 
 struct Bindings
 {
@@ -245,7 +244,6 @@ impl Bindings
 
         let parser = EventReader::new(file);
         let mut parents: Vec<String> = vec![];
-        let mut depth = 0;
         for e in parser
         {
             match e
@@ -349,12 +347,10 @@ impl Bindings
                     }
 
                     parents.push(name.to_string());
-                    depth += 1;
                 },
-                Ok(XmlEvent::EndElement { name, .. }) =>
+                Ok(XmlEvent::EndElement { .. }) =>
                 {
                     parents.pop();
-                    depth -= 1;
                 },
                 _ => ()
             }
