@@ -129,7 +129,7 @@ impl ApplicationHandler for App
                     thread::spawn(
                         move || {
                             println!("Running FC macro...");
-                            key_macros::fc_auto_route(rx);
+                            key_macros::fc_auto_route(Arc::clone(&game_state), rx);
                             println!("Trade FC ended");
                         }
                     );
