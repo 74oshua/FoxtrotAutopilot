@@ -1,5 +1,6 @@
 use std::{env::var_os, io::BufReader, path::{PathBuf}, thread::sleep, time::Duration};
 use std::sync::{Arc, Mutex};
+use active_win_pos_rs::get_active_window;
 
 use crate::{journal::{GameState}};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
@@ -475,7 +476,7 @@ fn check_journal(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: &mpsc
 }
 
 // FC route macro
-pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: mpsc::Receiver<bool>, res_x: i32, res_y: i32, pos_x: i32, pos_y: i32)
+pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: mpsc::Receiver<bool>)
 {
     // try to get custom bindings, otherwise use default
     let bindings = Bindings::get_custom_or_default();
@@ -601,17 +602,26 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                         {
                             // if we are not already jumping to target, plot a course
                             println!("Plotting a course for {}...", clipboard);
-                            // click system search bar
-                            left_click(pos_x + res_x / 2, pos_y + res_y / 8);
-                            // paste system name
-                            LControlKey.press();
-                            press_key(VKey, 1);
-                            LControlKey.release();
-                            // wait for results
-                            sleep_ms(1000);
-                            // click on first result
-                            left_click(res_x / 2, res_y / 7);
-                            left_click(res_x / 4 * 3, res_y / 8 * 3);
+                            // get active window coordinates
+                            if let Ok(window) = get_active_window()
+                            {
+                                let pos_x = window.position.x as i32;
+                                let pos_y = window.position.y as i32;
+                                let res_x = window.position.width as i32;
+                                let res_y = window.position.height as i32;
+
+                                // click system search bar
+                                left_click(pos_x + res_x / 2, pos_y + res_y / 8);
+                                // paste system name
+                                LControlKey.press();
+                                press_key(VKey, 1);
+                                LControlKey.release();
+                                // wait for results
+                                sleep_ms(1000);
+                                // click on first result
+                                left_click(res_x / 2, res_y / 7);
+                                left_click(res_x / 4 * 3, res_y / 8 * 3);
+                            }
 
                             // wait for carrier jump request
                             let mut timeout = 0;

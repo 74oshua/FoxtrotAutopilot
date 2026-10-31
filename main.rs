@@ -36,7 +36,7 @@ impl App
     {
         // splash screen
         println!("--------------------------------------------");
-        println!("FOXTROT AUTOPILOT v0.1.2");
+        println!("FOXTROT AUTOPILOT v0.1.3");
         println!("by 74oshua");
         println!("");
         println!("Press F3 to toggle Fleet Carrier Autopilot");
@@ -155,26 +155,10 @@ impl ApplicationHandler for App
                     let game_state = Arc::clone(&self.game_state_mutex);
                     let (tx, rx) = mpsc::channel();
                     self.macro_channels.fc_route_cancel = Some(tx);
-                    let mut res_x = 1920;
-                    let mut res_y = 1080;
-                    let mut pos_x = 0;
-                    let mut pos_y = 0;
-                    if let Some(window) = &self.window
-                    {
-                        if let Some(monitor) = window.primary_monitor()
-                        {
-                            res_x = monitor.size().width;
-                            res_y = monitor.size().height;
-                            pos_x = monitor.position().x;
-                            pos_y = monitor.position().y;
-                            println!("Detected monitor resolution: {}x{}", res_x, res_y);
-                            println!("Detected monitor position: ({}, {})", pos_x, pos_y);
-                        }
-                    }
                     thread::spawn(
                         move || {
                             println!("Running FC macro...");
-                            key_macros::fc_auto_route(&game_state, rx, u32::cast_signed(res_x), u32::cast_signed(res_y), pos_x, pos_y);
+                            key_macros::fc_auto_route(&game_state, rx);
                             println!("FC macro ended");
                         }
                     );
