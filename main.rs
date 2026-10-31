@@ -36,7 +36,7 @@ impl App
     {
         // splash screen
         println!("--------------------------------------------");
-        println!("FOXTROT AUTOPILOT v0.1.0");
+        println!("FOXTROT AUTOPILOT v0.1.1");
         println!("by 74oshua");
         println!("");
         println!("Press F3 to toggle Fleet Carrier Autopilot");
@@ -161,6 +161,7 @@ impl ApplicationHandler for App
                         {
                             res_x = monitor.size().width;
                             res_y = monitor.size().height;
+                            println!("Detected monitor resolution: {}x{}", res_x, res_y)
                         }
                     }
                     thread::spawn(
