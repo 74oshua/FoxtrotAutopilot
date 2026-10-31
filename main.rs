@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::key_macros::MacroChannels;
 use crate::{journal::{GameState, JournalReader}};
+use winit::window::Window;
 use winit::{application::ApplicationHandler, event::{self, DeviceEvent, RawKeyEvent}, event_loop::{self, ActiveEventLoop, EventLoop} };
 use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -15,9 +16,7 @@ mod key_macros;
 #[derive(Default)]
 struct App
 {
-    // journal_reader: Option<JournalReader>,
-    // game_state: GameState,
-    // key_macros: KeyMacros,
+    window: Option<Window>,
     game_state_mutex: Arc<Mutex<GameState>>,
     macro_channels: MacroChannels
 }
@@ -27,18 +26,21 @@ impl App
     fn new() -> App
     {
         App {
-            // journal_reader: JournalReader::new().ok(), game_state: GameState::new(), key_macros: KeyMacros::new(),
+            window: None,
             game_state_mutex: Arc::new(Mutex::new(GameState::new())),
-            macro_channels: MacroChannels::default()
+            macro_channels: MacroChannels::default(),
         }
     }
 
     fn init(&mut self)
     {
         // splash screen
+        println!("--------------------------------------------");
         println!("FOXTROT AUTOPILOT v0.1.0");
         println!("by 74oshua");
-        println!("Press F3 to toggle Fleet Carrier macro");
+        println!("");
+        println!("Press F3 to toggle Fleet Carrier Autopilot");
+        println!("Ensure the correct route has been imported into SrvSurvey");
         println!("--------------------------------------------");
 
         // spawn thread to continuously update journal
@@ -90,9 +92,15 @@ impl App
 
 impl ApplicationHandler for App
 {
-    fn resumed(&mut self, _event_loop: &ActiveEventLoop)
+    fn resumed(&mut self, event_loop: &ActiveEventLoop)
     {
         println!("Program initializing...");
+        let mut win_attributes = Window::default_attributes();
+        win_attributes.visible = false;
+        if let Ok(window) = event_loop.create_window(win_attributes)
+        {
+            self.window = Some(window);
+        }
         self.init();
     }
     
@@ -145,10 +153,20 @@ impl ApplicationHandler for App
                     let game_state = Arc::clone(&self.game_state_mutex);
                     let (tx, rx) = mpsc::channel();
                     self.macro_channels.fc_route_cancel = Some(tx);
+                    let mut res_x = 1920;
+                    let mut res_y = 1080;
+                    if let Some(window) = &self.window
+                    {
+                        if let Some(monitor) = window.current_monitor()
+                        {
+                            res_x = monitor.size().width;
+                            res_y = monitor.size().height;
+                        }
+                    }
                     thread::spawn(
                         move || {
                             println!("Running FC macro...");
-                            key_macros::fc_auto_route(&game_state, rx, 2560, 1440);
+                            key_macros::fc_auto_route(&game_state, rx, u32::cast_signed(res_x), u32::cast_signed(res_y));
                             println!("FC macro ended");
                         }
                     );
