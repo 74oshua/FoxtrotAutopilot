@@ -190,16 +190,4 @@ fn main()
     event_loop.set_control_flow(event_loop::ControlFlow::Poll);
     event_loop.listen_device_events(event_loop::DeviceEvents::Always);
     event_loop.run_app(&mut app).unwrap();
-
-    // // create journal reader
-    // let mut journal_reader = JournalReader::new().unwrap();
-    // let event_loop = EventLoop::new().unwrap();
-    // event_loop.set_control_flow(event_loop::ControlFlow::Poll);
-    // // init game state
-    // let mut game_state = GameState::new();
-    // loop
-    // {
-    //     // update game state according to journal
-    //     journal_reader.update_journal(&mut game_state).unwrap();
-    // }
 }

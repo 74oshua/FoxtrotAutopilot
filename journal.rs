@@ -110,8 +110,6 @@ struct EDEvent
 pub struct JournalReader
 {
     journal_iter: Option<io::Lines<io::BufReader<File>>>,
-    // whether or not the journal has caught up to the present
-    // current: bool,
 }
 
 impl Default for JournalReader
@@ -185,17 +183,12 @@ impl JournalReader
             {
                 if let Some(next_line) = iter.next()
                 {
-                    // testing: print it
-                    // println!("{}", next_line?);
-
                     // get the line as an EDEvent
                     if let Ok(event) = serde_json::from_str::<EDEvent>(&next_line?[..])
                     {
                         // save last event
                         game_state.last_event = event.event.clone();
 
-                        // test: print event
-                        // println!("{}: {}", event.timestamp, event.event);
                         // set FSD target
                         match event.event.as_str()
                         {
@@ -347,13 +340,6 @@ impl JournalReader
                 }
                 else
                 {
-                    // if self.current == false
-                    // {
-                    //     for carrier in game_state.carriers.values()
-                    //     {
-                    //         println!("Carrier Name: {}, Callsign: {}, Location: {}, Fuel Level: {}/1000", carrier.name, carrier.callsign, carrier.star_system, carrier.fuel_level);
-                    //     }
-                    // }
                     game_state.current = true;
                 }
                 Ok(())

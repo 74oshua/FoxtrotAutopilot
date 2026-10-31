@@ -419,44 +419,6 @@ impl Default for MacroChannels
     }
 }
 
-    // pub fn new() -> KeyMacros
-    // {
-    //     if let Some(appdata_path) = var_os("APPDATA").map(PathBuf::from)
-    //     {
-    //         if let Some(bindings_path) = appdata_path.parent()
-    //         {
-    //             let bindings_glob = bindings_path.join(PathBuf::from("Local\\Frontier Developments\\Elite Dangerous\\Options\\Bindings\\Custom.*.binds"));
-    //             // get all custom bindings files
-    //             if let Ok(custom_bindings) = glob(&bindings_glob.to_string_lossy().to_string()[..])
-    //             {
-    //                 // add the name of every custom bindings file to custom_bindings_list
-    //                 let mut custom_bindings_list: Vec<String> = vec![];
-    //                 for file in custom_bindings
-    //                 {
-    //                     match file
-    //                     {
-    //                         Ok(path) => custom_bindings_list.push(path.to_string_lossy().to_string()),
-    //                         Err(_) => ()
-    //                     }
-    //                 }
-    //                 // sort list
-    //                 custom_bindings_list.sort();
-    //                 // get newest bindings
-    //                 if let Some(current_binding) = custom_bindings_list.last()
-    //                 {
-    //                     if let Ok(bindings) = Bindings::from_file(PathBuf::from(current_binding))
-    //                     {
-    //                         println!("Using bindings in {}", current_binding);
-    //                         return KeyMacros { bindings: bindings, macro_states: MacroStates::default() };
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     println!("Using default bindings");
-    //     KeyMacros { bindings: Bindings::default(), macro_states: MacroStates::default() }
-    // }
-
 // key macros are pub static functions
 fn sleep_ms(millis: u64)
 {
@@ -468,7 +430,7 @@ fn press_key(key: inputbot::KeybdKey, times: usize)
     for _ in 0..times
     {
         key.press();
-        sleep_ms(50);
+        sleep_ms(100);
         key.release();
         sleep_ms(100);
     }
@@ -553,7 +515,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             // if in docking menu
             if last_game_state.music_track != "FleetCarrier_Managment" && last_game_state.music_track != "GalaxyMap"
             {
-                println!("In docking menu");
+                // println!("In docking menu");
                 press_key(bindings.back, 2);
                 press_key(bindings.up, 3);
                 press_key(bindings.down, 1);
@@ -589,7 +551,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             // if in carrier management
             if last_game_state.music_track == "FleetCarrier_Managment"
             {
-                println!("In carrier management");
+                // println!("In carrier management");
                 press_key(bindings.up, 13);
                 press_key(bindings.down, 1);
                 press_key(bindings.select, 2);
@@ -617,7 +579,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                 sleep_ms(1000);
                 if last_game_state.music_track == "GalaxyMap" && last_game_state.docked_carrier_id.is_some()
                 {
-                    println!("In galaxy map");
+                    // println!("In galaxy map");
                     // get clipboard contents
                     if let Ok(clipboard) = ctx.get_contents()
                     {
@@ -638,7 +600,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                         while target != clipboard
                         {
                             // if we are not already jumping to target, plot a course
-                            println!("Plotting a course for {}", clipboard);
+                            println!("Plotting a course for {}...", clipboard);
                             // click system search bar
                             left_click(pos_x + res_x / 2, pos_y + res_y / 8);
                             // paste system name
@@ -664,6 +626,17 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                                     return;
                                 }
                                 sleep_ms(100);
+                                // if the jump failed and we're back in Management...
+                                if last_game_state.music_track == "FleetCarrier_Managment"
+                                {
+                                    // return to map
+                                    sleep_ms(1000);
+                                    press_key(bindings.down, 1);
+                                    press_key(bindings.select, 1);
+                                    sleep_ms(1000);
+                                    press_key(bindings.select, 1);
+                                    sleep_ms(1000);
+                                }
                                 // check new carrier target
                                 if let Some(docked_carrier) = last_game_state.carriers.get(&docked_carrier_id)
                                 {
@@ -675,30 +648,14 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                                 timeout += 1;
                             }
                         }
-                        sleep_ms(5000);
+                        sleep_ms(3000);
                     }
                 }
                 // return to docking menu
-                press_key(bindings.back, 2);
-                // wait for fleet carrier management screen
-                while last_game_state.music_track != "FleetCarrier_Managment"
-                {
-                    if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
-                    {
-                        last_game_state = game_state;
-                    }
-                    else
-                    {
-                        return;
-                    }
-                    sleep_ms(100);
-                }
-                sleep_ms(5000);
-                press_key(bindings.back, 1);
-
-                // wait for docking menu
                 while last_game_state.music_track == "FleetCarrier_Managment" || last_game_state.music_track == "GalaxyMap"
                 {
+                    press_key(bindings.back, 1);
+                    sleep_ms(1000);
                     if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
                     {
                         last_game_state = game_state;
@@ -707,7 +664,6 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                     {
                         return;
                     }
-                    sleep_ms(100);
                 }
             }
 
@@ -715,7 +671,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             if last_game_state.music_track != "FleetCarrier_Managment" && last_game_state.music_track != "GalaxyMap"
             {
                 // load tritium until fuel is above 300
-                println!("Loading tritium");
+                // println!("Loading tritium");
                 let mut low_fuel = true;
                 let mut timeout = 0;
                 while low_fuel && timeout < 5
@@ -737,8 +693,6 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                             low_fuel = docked_carrier.fuel_level < 300;
                         }
                         // open commodities market
-                        // press_key(bindings.select, 1);
-                        // sleep_ms(5000);
                         press_key(bindings.right, 2);
                         press_key(bindings.select, 1);
                         sleep_ms(1000);
@@ -810,7 +764,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
 
                 // wait 3 minutes for carrier navigation to unlock
                 println!("Waiting for cooldown");
-                for _ in 0..250
+                for _ in 0..300
                 {
                     if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
                     {
@@ -825,33 +779,4 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             }
         }
     }
-
-    // loop
-    // {
-    //     // lock game and macro states
-    //     if let Ok(game_state) = game_state_mutex.lock()
-    //     {
-    //         // return if macro cancelled
-    //         if let Ok(should_cancel) = cancel_channel.recv()
-    //         {
-    //             if should_cancel
-    //             {
-    //                 return;
-    //             }
-    //         }
-    //         // break loop if galmap event detected
-    //         if game_state.music_track != "GalaxyMap"
-    //         {
-    //             break;
-    //         }
-    //     }
-    //     sleep_ms(100);
-    // }
-
-    // sleep_ms(2000);
-    // inputbot::MouseCursor::move_abs(1280, 150);
-
-    // leave station
-    // Self::press_key(self.bindings.menu_down, 1);
-    // Self::press_key(self.bindings.menu_select, 1);
 }
