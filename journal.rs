@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, Error};
@@ -5,6 +7,7 @@ use glob::glob;
 use serde::Deserialize;
 
 // information about a fleet carrier
+#[derive(Clone)]
 pub enum CarrierType
 {
     Unknown,
@@ -12,6 +15,7 @@ pub enum CarrierType
     SquadronCarrier
 }
 
+#[derive(Clone)]
 pub struct Carrier
 {
     pub carrier_type: CarrierType,
@@ -30,11 +34,13 @@ impl Default for Carrier
 }
 
 // state of Elite Dangerous
+#[derive(Clone)]
 pub struct GameState
 {
     pub fsd_target: String,
     pub music_track: String,
-    pub carriers: HashMap<u32, Carrier>
+    pub carriers: HashMap<u32, Carrier>,
+    pub last_event: String,
 }
 
 impl GameState
@@ -45,7 +51,8 @@ impl GameState
         {
             fsd_target: "".to_string(),
             music_track: "".to_string(),
-            carriers: HashMap::new()
+            carriers: HashMap::new(),
+            last_event: "".to_string()
         }
     }
 }
@@ -85,10 +92,17 @@ struct EDEvent
 
 pub struct JournalReader
 {
-    journal_iter: io::Lines<io::BufReader<File>>,
+    journal_iter: Option<io::Lines<io::BufReader<File>>>,
     // whether or not the journal has caught up to the present
     current: bool,
-    pub last_event: String
+}
+
+impl Default for JournalReader
+{
+    fn default() -> Self
+    {
+        JournalReader { journal_iter: None, current: false }
+    }
 }
 
 impl JournalReader
@@ -126,7 +140,7 @@ impl JournalReader
 
                     // open newest journal file and return iterator
                     let file = File::open(current_journal_name)?;
-                    Ok(JournalReader { journal_iter: io::BufReader::new(file).lines(), current: false, last_event: "".to_string() })
+                    Ok(JournalReader { journal_iter: Some(io::BufReader::new(file).lines()), current: false })
                 }
                 else
                 {
@@ -144,91 +158,105 @@ impl JournalReader
         }
     }
 
-    pub fn update_journal(&mut self, game_state: &mut GameState) -> Result<(), Error>
+    pub fn update_journal(&mut self, game_state_mut: Arc<Mutex<GameState>>) -> Result<(), Error>
     {
-        // try to get the next line from the journal
-        if let Some(next_line) = self.journal_iter.next()
+        if let Ok(mut game_state) = game_state_mut.lock()
         {
-            // testing: print it
-            // println!("{}", next_line?);
-
-            // get the line as an EDEvent
-            if let Ok(event) = serde_json::from_str::<EDEvent>(&next_line?[..])
+            // try to get the next line from the journal
+            if let Some(ref mut iter) = self.journal_iter
             {
-                // save last event
-                self.last_event = event.event.clone();
+                if let Some(next_line) = iter.next()
+                {
+                    // testing: print it
+                    // println!("{}", next_line?);
 
-                // test: print event
-                // println!("{}: {}", event.timestamp, event.event);
-                // set FSD target
-                if event.event == "FSDTarget"
-                {
-                    if let Some(fsd_target) = event.name
+                    // get the line as an EDEvent
+                    if let Ok(event) = serde_json::from_str::<EDEvent>(&next_line?[..])
                     {
-                        game_state.fsd_target = fsd_target;
-                    }
-                    else
-                    {
-                        println!("error getting FSD target");
-                    }
-                }
-                else if event.event == "Music"
-                {
-                    if let Some(music_track) = event.music_track
-                    {
-                        game_state.music_track = music_track;
-                    }
-                    else
-                    {
-                        println!("error getting music track");
-                    }
-                }
-                else if event.event == "CarrierStats" || event.event == "CarrierLocation"
-                {
-                    if let Some(carrier_id) = event.carrier_id
-                    {
-                        if let Some(name) = event.name
+                        // save last event
+                        game_state.last_event = event.event.clone();
+
+                        // test: print event
+                        // println!("{}: {}", event.timestamp, event.event);
+                        // set FSD target
+                        if event.event == "FSDTarget"
                         {
-                            game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).name = name;
-                        }
-                        if let Some(carrier_type) = event.carrier_type
-                        {
-                            let ctype = match &carrier_type[..]
+                            if let Some(fsd_target) = event.name
                             {
-                                "FleetCarrier" => CarrierType::FleetCarrier,
-                                "SquadronCarrier" => CarrierType::SquadronCarrier,
-                                _ => CarrierType::Unknown
-                            };
-                            game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).carrier_type = ctype;
+                                game_state.fsd_target = fsd_target;
+                            }
+                            else
+                            {
+                                println!("error getting FSD target");
+                            }
                         }
-                        if let Some(callsign) = event.callsign
+                        else if event.event == "Music"
                         {
-                            game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).callsign = callsign;
+                            if let Some(music_track) = event.music_track
+                            {
+                                game_state.music_track = music_track;
+                            }
+                            else
+                            {
+                                println!("error getting music track");
+                            }
                         }
-                        if let Some(star_system) = event.star_system
+                        else if event.event == "CarrierStats" || event.event == "CarrierLocation"
                         {
-                            game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).star_system = star_system;
-                        }
-                        if let Some(fuel_level) = event.fuel_level
-                        {
-                            game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).fuel_level = fuel_level;
+                            if let Some(carrier_id) = event.carrier_id
+                            {
+                                if let Some(name) = event.name
+                                {
+                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).name = name;
+                                }
+                                if let Some(carrier_type) = event.carrier_type
+                                {
+                                    let ctype = match &carrier_type[..]
+                                    {
+                                        "FleetCarrier" => CarrierType::FleetCarrier,
+                                        "SquadronCarrier" => CarrierType::SquadronCarrier,
+                                        _ => CarrierType::Unknown
+                                    };
+                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).carrier_type = ctype;
+                                }
+                                if let Some(callsign) = event.callsign
+                                {
+                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).callsign = callsign;
+                                }
+                                if let Some(star_system) = event.star_system
+                                {
+                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).star_system = star_system;
+                                }
+                                if let Some(fuel_level) = event.fuel_level
+                                {
+                                    game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).fuel_level = fuel_level;
+                                }
+                            }
                         }
                     }
                 }
+                else
+                {
+                    // if self.current == false
+                    // {
+                    //     for carrier in game_state.carriers.values()
+                    //     {
+                    //         println!("Carrier Name: {}, Callsign: {}, Location: {}, Fuel Level: {}/1000", carrier.name, carrier.callsign, carrier.star_system, carrier.fuel_level);
+                    //     }
+                    // }
+                    self.current = true;
+                }
+                Ok(())
+            }
+            else
+            {
+                Err(Error::new(io::ErrorKind::InvalidData, "journal reader not initialized".to_string()))
             }
         }
         else
         {
-            // if self.current == false
-            // {
-            //     for carrier in game_state.carriers.values()
-            //     {
-            //         println!("Carrier Name: {}, Callsign: {}, Location: {}, Fuel Level: {}/1000", carrier.name, carrier.callsign, carrier.star_system, carrier.fuel_level);
-            //     }
-            // }
-            self.current = true;
+            Err(Error::new(io::ErrorKind::InvalidData, "could not lock mutex".to_string()))
         }
-        Ok(())
     }
 
     pub fn is_current(&self) -> bool

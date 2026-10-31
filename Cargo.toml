@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+cli-clipboard = "0.4.0"
 glob = "0.3.4"
 inputbot = "0.6.0"
 serde = { version = "1.0.229", features = ["derive"]}

@@ -1,8 +1,12 @@
+use std::thread::{self, JoinHandle};
+use std::sync::{Arc, Mutex};
+
+use crate::key_macros::MacroChannels;
 use crate::{journal::{GameState, JournalReader}};
 use winit::{application::ApplicationHandler, event::{self, DeviceEvent, RawKeyEvent}, event_loop::{self, ActiveEventLoop, EventLoop}, keyboard::KeyCode::KeyC, window::{Window, WindowAttributes}};
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use key_macros::KeyMacros;
+use std::sync::mpsc;
 
 mod journal;
 mod key_macros;
@@ -10,36 +14,61 @@ mod key_macros;
 #[derive(Default)]
 struct App
 {
+    // journal_reader: Option<JournalReader>,
+    // game_state: GameState,
+    // key_macros: KeyMacros,
     journal_reader: Option<JournalReader>,
-    game_state: GameState,
-    key_macros: KeyMacros
+    game_state_mutex: Arc<Mutex<GameState>>,
+    macro_channels: MacroChannels
 }
 
 impl App
 {
     fn new() -> App
     {
-        App { journal_reader: JournalReader::new().ok(), game_state: GameState::new(), key_macros: KeyMacros::new() }
+        App {
+            // journal_reader: JournalReader::new().ok(), game_state: GameState::new(), key_macros: KeyMacros::new(),
+            journal_reader: JournalReader::new().ok(), game_state_mutex: Arc::new(Mutex::new(GameState::new())),
+            macro_channels: MacroChannels::default()
+        }
     }
 
     fn init(&mut self)
     {
-        // init game state
-        let mut game_state = GameState::new();
+        // read journal to present
         if let Some(ref mut journal_reader) = self.journal_reader
         {
             // update game state according to journal until caught up
             while !journal_reader.is_current()
             {
-                journal_reader.update_journal(&mut game_state).unwrap();
+                journal_reader.update_journal(Arc::clone(&self.game_state_mutex));
             }
             println!("Journal reader is up to date");
         }
+
+        // spawn thread to continuously update journal
+        let game_state = Arc::clone(&self.game_state_mutex);
+        thread::spawn(move || {
+            loop
+            {
+                if let Ok(mut journal_reader) = JournalReader::new()
+                {
+                    journal_reader.update_journal(Arc::clone(&game_state));
+                }
+            }
+        });
     }
     
     fn update(&mut self)
     {
-        println!("Updating");
+        // read journal to present
+        if let Some(ref mut journal_reader) = self.journal_reader
+        {
+            loop
+            {
+                journal_reader.update_journal(Arc::clone(&self.game_state_mutex));
+            }
+        }
     }
 }
 
@@ -78,20 +107,33 @@ impl ApplicationHandler for App
         match event
         {
             // if F2 pressed
+            // toggle trade macro
             DeviceEvent::Key (
                 RawKeyEvent { physical_key: PhysicalKey::Code(KeyCode::F2), state: ElementState::Released }
              ) =>
              {
-                println!("Running trade macro...");
-                if let Some(ref mut journal_reader) = self.journal_reader
+                println!("F2 pressed");
+                // if already running, cancel
+                if let Some(ref mut trade_macro_cancel) = self.macro_channels.fc_route_cancel
                 {
-                    self.key_macros.auto_trade(&mut self.game_state, journal_reader, 2, "Ngurii".to_string(), "Hyades Sector FL-O b6-2".to_string());
+                    let _ = trade_macro_cancel.send(true);
+                    self.macro_channels.fc_route_cancel = None;
+                    println!("Trade macro cancelled");
                 }
+                // otherwise, run
                 else
                 {
-                    println!("journal error");
+                    let game_state = Arc::clone(&self.game_state_mutex);
+                    let (tx, rx) = mpsc::channel();
+                    self.macro_channels.fc_route_cancel = Some(tx);
+                    thread::spawn(
+                        move || {
+                            println!("Running FC macro...");
+                            key_macros::fc_auto_route(rx);
+                            println!("Trade FC ended");
+                        }
+                    );
                 }
-                println!("Trade macro done");
              },
             _ => ()
         };

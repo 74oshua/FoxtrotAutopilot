@@ -1,9 +1,11 @@
 use std::{env::var_os, fmt::Debug, io::BufReader, path::{Path, PathBuf}, thread::sleep, time::Duration};
+use std::sync::{Arc, Mutex};
 
 use crate::{journal::{GameState, JournalReader}, key_macros};
+use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use inputbot::{KeySequence, KeybdKey};
 use inputbot::KeybdKey::*;
-use winit::event::Event;
+use std::sync::mpsc;
 
 use std::fs::File;
 use std::io::{self, BufRead, Error};
@@ -12,12 +14,12 @@ use xml::{attribute, reader::{EventReader, XmlEvent}};
 
 struct Bindings
 {
-    pub menu_up: KeybdKey,
-    pub menu_down: KeybdKey,
+    pub up: KeybdKey,
+    pub down: KeybdKey,
     pub menu_left: KeybdKey,
-    pub menu_right: KeybdKey,
-    pub menu_select: KeybdKey,
-    pub menu_back: KeybdKey,
+    pub right: KeybdKey,
+    pub select: KeybdKey,
+    pub back: KeybdKey,
     pub galmap: KeybdKey,
 }
 
@@ -25,7 +27,7 @@ impl Default for Bindings
 {
     fn default() -> Self
     {
-        Bindings { menu_up: WKey, menu_down: SKey, menu_left: AKey, menu_right: DKey, menu_select: SpaceKey, menu_back: BackspaceKey, galmap: MKey }
+        Bindings { up: WKey, down: SKey, menu_left: AKey, right: DKey, select: SpaceKey, back: BackspaceKey, galmap: MKey }
     }
 }
 
@@ -260,7 +262,7 @@ impl Bindings
                                 {
                                     if let Some(key) = Bindings::str_to_key(attribute.value.to_string())
                                     {
-                                        bindings.menu_up = key;
+                                        bindings.up = key;
                                     }
                                 }
                             }
@@ -273,7 +275,7 @@ impl Bindings
                                 {
                                     if let Some(key) = Bindings::str_to_key(attribute.value.to_string())
                                     {
-                                        bindings.menu_down = key;
+                                        bindings.down = key;
                                     }
                                 }
                             }
@@ -299,7 +301,7 @@ impl Bindings
                                 {
                                     if let Some(key) = Bindings::str_to_key(attribute.value.to_string())
                                     {
-                                        bindings.menu_right = key;
+                                        bindings.right = key;
                                     }
                                 }
                             }
@@ -312,7 +314,7 @@ impl Bindings
                                 {
                                     if let Some(key) = Bindings::str_to_key(attribute.value.to_string())
                                     {
-                                        bindings.menu_select = key;
+                                        bindings.select = key;
                                     }
                                 }
                             }
@@ -325,7 +327,7 @@ impl Bindings
                                 {
                                     if let Some(key) = Bindings::str_to_key(attribute.value.to_string())
                                     {
-                                        bindings.menu_back = key;
+                                        bindings.back = key;
                                     }
                                 }
                             }
@@ -359,24 +361,8 @@ impl Bindings
 
         Ok(bindings)
     }
-}
 
-pub struct KeyMacros
-{
-    bindings: Bindings
-}
-
-impl Default for KeyMacros
-{
-    fn default() -> Self
-    {
-        KeyMacros { bindings: Bindings::default() }
-    }
-}
-
-impl KeyMacros
-{
-    pub fn new() -> Self
+    pub fn get_custom() -> Option<Bindings>
     {
         if let Some(appdata_path) = var_os("APPDATA").map(PathBuf::from)
         {
@@ -403,109 +389,205 @@ impl KeyMacros
                     {
                         if let Ok(bindings) = Bindings::from_file(PathBuf::from(current_binding))
                         {
-                            println!("Using bindings in {}", current_binding);
-                            return KeyMacros { bindings: bindings };
+                            println!("Found bindings file: {}", current_binding);
+                            return Some(bindings);
                         }
                     }
                 }
             }
         }
-        println!("Using default bindings");
-        KeyMacros { bindings: Bindings::default() }
+        None
     }
 
-    fn sleep_ms(millis: u64)
+    pub fn get_custom_or_default() -> Bindings
     {
-        sleep(Duration::from_millis(millis));
-    }
-
-    fn press_key(key: inputbot::KeybdKey, times: usize)
-    {
-        for _ in 0..times
+        if let Some(bindings) = Bindings::get_custom()
         {
-            key.press();
-            Self::sleep_ms(100);
-            key.release();
-            Self::sleep_ms(100);
+            return bindings;
+        }
+        Bindings::default()
+    }
+}
+
+pub struct MacroChannels
+{
+    pub fc_route_cancel: Option<mpsc::Sender<bool>>,
+}
+
+impl Default for MacroChannels
+{
+    fn default() -> Self
+    {
+        MacroChannels { fc_route_cancel: None }
+    }
+}
+
+    // pub fn new() -> KeyMacros
+    // {
+    //     if let Some(appdata_path) = var_os("APPDATA").map(PathBuf::from)
+    //     {
+    //         if let Some(bindings_path) = appdata_path.parent()
+    //         {
+    //             let bindings_glob = bindings_path.join(PathBuf::from("Local\\Frontier Developments\\Elite Dangerous\\Options\\Bindings\\Custom.*.binds"));
+    //             // get all custom bindings files
+    //             if let Ok(custom_bindings) = glob(&bindings_glob.to_string_lossy().to_string()[..])
+    //             {
+    //                 // add the name of every custom bindings file to custom_bindings_list
+    //                 let mut custom_bindings_list: Vec<String> = vec![];
+    //                 for file in custom_bindings
+    //                 {
+    //                     match file
+    //                     {
+    //                         Ok(path) => custom_bindings_list.push(path.to_string_lossy().to_string()),
+    //                         Err(_) => ()
+    //                     }
+    //                 }
+    //                 // sort list
+    //                 custom_bindings_list.sort();
+    //                 // get newest bindings
+    //                 if let Some(current_binding) = custom_bindings_list.last()
+    //                 {
+    //                     if let Ok(bindings) = Bindings::from_file(PathBuf::from(current_binding))
+    //                     {
+    //                         println!("Using bindings in {}", current_binding);
+    //                         return KeyMacros { bindings: bindings, macro_states: MacroStates::default() };
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     println!("Using default bindings");
+    //     KeyMacros { bindings: Bindings::default(), macro_states: MacroStates::default() }
+    // }
+
+// key macros are pub static functions
+fn sleep_ms(millis: u64)
+{
+    sleep(Duration::from_millis(millis));
+}
+
+fn press_key(key: inputbot::KeybdKey, times: usize)
+{
+    for _ in 0..times
+    {
+        key.press();
+        sleep_ms(100);
+        key.release();
+        sleep_ms(100);
+    }
+}
+
+fn hold_key(key: inputbot::KeybdKey, times: usize, duration: u64)
+{
+    for _ in 0..times
+    {
+        key.press();
+        sleep_ms(duration);
+        key.release();
+        sleep_ms(100);
+    }
+}
+
+// FC route macro
+pub fn fc_auto_route(game_state_mutex: Arc<Mutex<GameState>>, gs_channel: mpsc::Receiver<bool>)
+{
+    // try to get custom bindings, otherwise use default
+    let bindings = Bindings::get_custom_or_default();
+    let mut last_game_state = GameState::new();
+
+    // get clipboard context
+    if let Ok(ctx) = ClipboardContext::new()
+    {
+        loop
+        {
+            // lock gamestate
+            if let Ok(game_state) = game_state_mutex.lock()
+            {
+                last_game_state = game_state.clone();
+            }
+
+            // if in docking menu
+            if last_game_state.music_track != "FleetCarrier_Managment" && last_game_state.music_track != "GalaxyMap"
+            {
+                press_key(bindings.back, 2);
+                press_key(bindings.up, 3);
+                press_key(bindings.down, 3);
+                press_key(bindings.select, 1);
+
+                // wait for carrier services
+                sleep_ms(5000);
+
+                press_key(bindings.down, 2);
+                press_key(bindings.right, 2);
+                press_key(bindings.select, 1);
+
+                // wait for transition to carrier management
+                while last_game_state.music_track != "FleetCarrier_Managment"
+                {
+                    // lock gamestate
+                    if let Ok(game_state) = game_state_mutex.lock()
+                    {
+                        last_game_state = game_state.clone();
+                    }
+                    sleep_ms(100);
+                }
+                sleep_ms(5000);
+            }
+
+            // if in carrier management
+            if last_game_state.music_track == "FleetCarrier_Managment"
+            {
+                press_key(bindings.up, 13);
+                press_key(bindings.down, 1);
+                press_key(bindings.select, 2);
+
+                // wait for transition to map screen
+                while last_game_state.music_track != "GalaxyMap"
+                {
+                    // lock gamestate
+                    if let Ok(game_state) = game_state_mutex.lock()
+                    {
+                        last_game_state = game_state.clone();
+                    }
+                    sleep_ms(100);
+                }
+                sleep_ms(1000);
+            }
+
+            // if in map screen
+            if last_game_state.music_track == "GalaxyMap"
+            {
+                
+            }
         }
     }
 
-    fn hold_key(key: inputbot::KeybdKey, times: usize, duration: u64)
-    {
-        for _ in 0..times
-        {
-            key.press();
-            Self::sleep_ms(duration);
-            key.release();
-            Self::sleep_ms(100);
-        }
-    }
+    // loop
+    // {
+    //     // lock game and macro states
+    //     if let Ok(game_state) = game_state_mutex.lock()
+    //     {
+    //         // return if macro cancelled
+    //         if let Ok(should_cancel) = cancel_channel.recv()
+    //         {
+    //             if should_cancel
+    //             {
+    //                 return;
+    //             }
+    //         }
+    //         // break loop if galmap event detected
+    //         if game_state.music_track != "GalaxyMap"
+    //         {
+    //             break;
+    //         }
+    //     }
+    //     sleep_ms(100);
+    // }
 
-    // FC mover macro
-    // move FC along clipboard route
-    pub fn fc_mover_macro(game_state: &mut GameState, journal_reader: &mut JournalReader)
-    {
-        // if we are in the docking menu
-        // (yes, FDev really did misspell management)
-        if game_state.music_track != "FleetCarrier_Managment" && game_state.music_track != "GalaxyMap"
-        {
-            // check for journal updates
-            journal_reader.update_journal(game_state);
-        }
-    }
+    // sleep_ms(2000);
+    // inputbot::MouseCursor::move_abs(1280, 150);
 
-    // automatic trade route
-    // start at the buy system
-    pub fn auto_trade(&self, game_state: &mut GameState, journal_reader: &mut JournalReader, commodity_list_pos: usize, buy_system: String, sell_system: String)
-    {
-        // // reset to top of docking menu
-        // Self::press_key(self.bindings.menu_back, 3);
-        // Self::press_key(self.bindings.menu_up, 3);
-
-        // // open starport services
-        // Self::press_key(self.bindings.menu_down, 1);
-        // Self::press_key(self.bindings.menu_select, 1);
-        // Self::sleep_ms(1000);
-
-        // // open commodities
-        // Self::press_key(self.bindings.menu_down, 1);
-        // Self::press_key(self.bindings.menu_select, 1);
-
-        // // wait for market event
-        // while journal_reader.last_event != "Market"
-        // {
-        //     Self::sleep_ms(100);
-        //     journal_reader.update_journal(game_state);
-        // }
-        // Self::sleep_ms(2000);
-
-        // // buy as much of the target commodity as possible
-        // Self::press_key(self.bindings.menu_right, 1);
-        // Self::press_key(self.bindings.menu_down, commodity_list_pos-1);
-        // Self::press_key(self.bindings.menu_select, 1);
-        // Self::sleep_ms(1000);
-        // Self::hold_key(self.bindings.menu_right, 1, 2000);
-        // Self::press_key(self.bindings.menu_down, 1);
-        // Self::press_key(self.bindings.menu_select, 1);
-
-        // // exit to docking menu
-        // Self::press_key(self.bindings.menu_back, 2);
-        // Self::sleep_ms(500);
-        // Self::press_key(self.bindings.menu_back, 1);
-
-        // plot course to sell system
-        Self::press_key(self.bindings.galmap, 1);
-        // wait for galmap event
-        while game_state.music_track != "GalaxyMap"
-        {
-            Self::sleep_ms(100);
-            journal_reader.update_journal(game_state);
-        }
-        Self::sleep_ms(2000);
-        inputbot::MouseCursor::move_abs(1280, 150);
-
-        // leave station
-        // Self::press_key(self.bindings.menu_down, 1);
-        // Self::press_key(self.bindings.menu_select, 1);
-    }
+    // leave station
+    // Self::press_key(self.bindings.menu_down, 1);
+    // Self::press_key(self.bindings.menu_select, 1);
 }
