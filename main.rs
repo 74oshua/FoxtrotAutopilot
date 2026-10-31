@@ -35,6 +35,12 @@ impl App
 
     fn init(&mut self)
     {
+        // splash screen
+        println!("FOXTROT AUTOPILOT v0.1.0");
+        println!("by 74oshua");
+        println!("Press F3 to toggle Fleet Carrier macro");
+        println!("--------------------------------------------");
+
         // spawn thread to continuously update journal
         let game_state = Arc::clone(&self.game_state_mutex);
         thread::spawn(move || {
