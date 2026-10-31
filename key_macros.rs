@@ -675,7 +675,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                                 timeout += 1;
                             }
                         }
-                        sleep_ms(1000);
+                        sleep_ms(5000);
                     }
                 }
                 // return to docking menu
