@@ -16,7 +16,6 @@ mod key_macros;
 #[derive(Default)]
 struct App
 {
-    window: Option<Window>,
     game_state_mutex: Arc<Mutex<GameState>>,
     macro_channels: MacroChannels
 }
@@ -26,7 +25,6 @@ impl App
     fn new() -> App
     {
         App {
-            window: None,
             game_state_mutex: Arc::new(Mutex::new(GameState::new())),
             macro_channels: MacroChannels::default(),
         }
@@ -94,15 +92,9 @@ impl App
 
 impl ApplicationHandler for App
 {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop)
+    fn resumed(&mut self, _event_loop: &ActiveEventLoop)
     {
         println!("Program initializing...");
-        let mut win_attributes = Window::default_attributes();
-        win_attributes.visible = false;
-        if let Ok(window) = event_loop.create_window(win_attributes)
-        {
-            self.window = Some(window);
-        }
         self.init();
     }
     
