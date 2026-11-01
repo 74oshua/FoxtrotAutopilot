@@ -34,7 +34,7 @@ impl App
     {
         // splash screen
         println!("--------------------------------------------");
-        println!("FOXTROT AUTOPILOT v0.1.3");
+        println!("FOXTROT AUTOPILOT v0.1.4");
         println!("by 74oshua");
         println!("");
         println!("Press F3 to toggle Fleet Carrier Autopilot");
