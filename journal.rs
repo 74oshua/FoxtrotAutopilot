@@ -42,6 +42,7 @@ pub struct GameState
     pub fsd_target: Option<String>,
     pub music_track: String,
     pub docked: bool,
+    pub docked_station_type: Option<String>,
     pub station_name: Option<String>,
     pub docked_carrier_id: Option<u32>,
     pub carriers: HashMap<u32, Carrier>,
@@ -58,6 +59,7 @@ impl GameState
             fsd_target: None,
             music_track: "".to_string(),
             docked: false,
+            docked_station_type: None,
             station_name: None,
             docked_carrier_id: None,
             carriers: HashMap::new(),
@@ -257,6 +259,21 @@ impl JournalReader
                                     {
                                         game_state.carriers.entry(carrier_id).or_insert(Carrier::default()).fuel_level = fuel_level;
                                     }
+
+                                    if (game_state.docked_station_type == Some("FleetCarrier".to_string()) || game_state.docked_station_type == Some("SquadronCarrier".to_string())) && game_state.docked_carrier_id.is_none()
+                                    {
+                                        if let Some(station_name) = &game_state.station_name
+                                        {
+                                            for carrier in &game_state.carriers
+                                            {
+                                                if carrier.1.callsign == *station_name
+                                                {
+                                                    game_state.docked_carrier_id = Some(*carrier.0);
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             },
                             "CarrierJump" =>
@@ -284,7 +301,7 @@ impl JournalReader
                                         {
                                             if let Some(station_type) = event.station_type
                                             {
-                                                if station_type == "FleetCarrier"
+                                                if station_type == "FleetCarrier" || station_type == "SquadronCarrier"
                                                 {
                                                     for carrier in &game_state.carriers
                                                     {
@@ -295,6 +312,7 @@ impl JournalReader
                                                         }
                                                     }
                                                 }
+                                                game_state.docked_station_type = Some(station_type);
                                             }
                                             game_state.station_name = Some(station_name);
                                         }
@@ -313,7 +331,8 @@ impl JournalReader
                                 {
                                     if let Some(station_type) = event.station_type
                                     {
-                                        if station_type == "FleetCarrier"
+                                        game_state.docked_station_type = Some(station_type.clone());
+                                        if station_type == "FleetCarrier" || station_type == "SquadronCarrier"
                                         {
                                             for carrier in &game_state.carriers
                                             {
@@ -333,6 +352,7 @@ impl JournalReader
                                 game_state.docked = false;
                                 game_state.docked_carrier_id = None;
                                 game_state.station_name = None;
+                                game_state.docked_station_type = None;
                             },
                             _ => ()
                         }

@@ -420,6 +420,29 @@ impl Default for MacroChannels
     }
 }
 
+fn check_elite_focused()
+{
+    // pause if Elite is not focused
+    let mut window_name = "".to_string();
+    if let Ok(window) = get_active_window()
+    {
+        window_name = window.app_name;
+    }
+    if window_name != "Elite Dangerous: Odyssey Executable"
+    {
+        println!("Waiting for Elite Dangerous to be focused...");
+        while window_name != "Elite Dangerous: Odyssey Executable"
+        {
+            if let Ok(window) = get_active_window()
+            {
+                window_name = window.app_name;
+            }
+            sleep_ms(100);
+        }
+        println!("Elite Dangerous focused");
+    }
+}
+
 // key macros are pub static functions
 fn sleep_ms(millis: u64)
 {
@@ -428,6 +451,7 @@ fn sleep_ms(millis: u64)
 
 fn press_key(key: inputbot::KeybdKey, times: usize)
 {
+    check_elite_focused();
     for _ in 0..times
     {
         key.press();
@@ -437,17 +461,27 @@ fn press_key(key: inputbot::KeybdKey, times: usize)
     }
 }
 
-fn left_click(x: i32, y: i32)
+// x and y are proportional to the active window
+// (1, 1) is the bottom right corner
+fn left_click(x: f64, y: f64)
 {
-    inputbot::MouseCursor::move_abs(x, y);
-    inputbot::MouseButton::LeftButton.press();
-    sleep_ms(100);
-    inputbot::MouseButton::LeftButton.release();
-    sleep_ms(100);
+    check_elite_focused();
+    // translate coordinates to window
+    if let Ok(window) = get_active_window()
+    {
+        inputbot::MouseCursor::move_abs(
+            (window.position.x + x * window.position.width) as i32,
+            (window.position.y + y * window.position.height) as i32);
+        inputbot::MouseButton::LeftButton.press();
+        sleep_ms(100);
+        inputbot::MouseButton::LeftButton.release();
+        sleep_ms(100);
+    }
 }
 
 fn hold_key(key: inputbot::KeybdKey, times: usize, duration: u64)
 {
+    check_elite_focused();
     for _ in 0..times
     {
         key.press();
@@ -459,6 +493,8 @@ fn hold_key(key: inputbot::KeybdKey, times: usize, duration: u64)
 
 fn check_journal(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: &mpsc::Receiver<bool>) -> Option<GameState>
 {
+    check_elite_focused();
+
     // return if cancelled
     if cancel_channel.try_recv().is_ok()
     {
@@ -494,10 +530,10 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             }
 
             // if not docked with carrier, wait until we are
-            if !last_game_state.docked || last_game_state.docked_carrier_id.is_none()
+            if !last_game_state.docked || (last_game_state.docked_station_type != Some("FleetCarrier".to_string()) && last_game_state.docked_station_type != Some("FleetCarrier".to_string()))
             {
                 println!("Not docked with carrier, waiting for docking...");
-                while !last_game_state.docked || last_game_state.docked_carrier_id.is_none()
+                while !last_game_state.docked || (last_game_state.docked_station_type != Some("FleetCarrier".to_string()) && last_game_state.docked_station_type != Some("SquadronCarrier".to_string()))
                 {
                     if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
                     {
@@ -611,7 +647,8 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                                 let res_y = window.position.height as i32;
 
                                 // click system search bar
-                                left_click(pos_x + res_x / 2, pos_y + res_y / 8);
+                                // left_click(pos_x + res_x / 2, pos_y + res_y / 8);
+                                left_click(0.5, 0.125);
                                 // paste system name
                                 LControlKey.press();
                                 press_key(VKey, 1);
@@ -619,8 +656,10 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                                 // wait for results
                                 sleep_ms(1000);
                                 // click on first result
-                                left_click(res_x / 2, res_y / 7);
-                                left_click(res_x / 4 * 3, res_y / 8 * 3);
+                                // left_click(res_x / 2, res_y / 7);
+                                left_click(0.5, 0.143);
+                                // left_click(res_x / 4 * 3, res_y / 8 * 3);
+                                left_click(0.75, 0.375);
                             }
 
                             // wait for carrier jump request
@@ -662,19 +701,13 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                     }
                 }
                 // return to docking menu
-                while last_game_state.music_track == "FleetCarrier_Managment" || last_game_state.music_track == "GalaxyMap"
-                {
-                    press_key(bindings.back, 1);
-                    sleep_ms(1000);
-                    if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
-                    {
-                        last_game_state = game_state;
-                    }
-                    else
-                    {
-                        return;
-                    }
-                }
+                press_key(bindings.back, 1);
+                sleep_ms(1000);
+                press_key(bindings.back, 1);
+                sleep_ms(1000);
+                press_key(bindings.back, 1);
+                sleep_ms(1000);
+                press_key(bindings.select, 1);
             }
 
             // if in docking menu after carrier jump requested
