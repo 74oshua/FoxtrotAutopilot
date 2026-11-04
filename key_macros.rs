@@ -420,7 +420,7 @@ fn get_resolution_from_settings(path: PathBuf) -> Result<WindowPosition, io::Err
     {
         match e
         {
-            Ok(XmlEvent::StartElement { name, attributes, namespace }) =>
+            Ok(XmlEvent::StartElement { name, .. }) =>
             {
                 parents.push(name.to_string());
             },
@@ -430,6 +430,17 @@ fn get_resolution_from_settings(path: PathBuf) -> Result<WindowPosition, io::Err
                 {
                     let parent = parents[parents.len()-1].clone();
 
+                    // if not windowed, go with window coordinates
+                    if parent == "Fullscreen"
+                    {
+                        if string != "0".to_string()
+                        {
+                            if let Ok(window_pos) = get_position()
+                            {
+                                return Ok(window_pos);
+                            }
+                        }
+                    }
                     if parent == "ScreenWidth"
                     {
                         if let Ok(width) = u32::from_str_radix(&string, 10)
