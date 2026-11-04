@@ -441,7 +441,7 @@ fn get_resolution_from_settings(path: PathBuf) -> Result<WindowPosition, io::Err
                             }
                         }
                     }
-                    if parent == "ScreenWidth"
+                    else if parent == "ScreenWidth"
                     {
                         if let Ok(width) = u32::from_str_radix(&string, 10)
                         {
