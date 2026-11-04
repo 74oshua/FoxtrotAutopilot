@@ -1,6 +1,6 @@
 use std::{env::var_os, io::BufReader, path::{PathBuf}, thread::sleep, time::Duration};
 use std::sync::{Arc, Mutex};
-use active_win_pos_rs::get_active_window;
+use active_win_pos_rs::*;
 
 use crate::{journal::{GameState}};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
@@ -407,6 +407,103 @@ impl Bindings
     }
 }
 
+fn get_resolution_from_settings(path: PathBuf) -> Result<WindowPosition, io::Error>
+{
+    let file = File::open(path)?;
+    let file = BufReader::new(file);
+
+    let parser = EventReader::new(file);
+    let mut parents: Vec<String> = vec![];
+    let mut screen_width: Option<u32> = None;
+    let mut screen_height: Option<u32> = None;
+    for e in parser
+    {
+        match e
+        {
+            Ok(XmlEvent::StartElement { name, attributes, namespace }) =>
+            {
+                parents.push(name.to_string());
+            },
+            Ok(XmlEvent::Characters { 0: string }) =>
+            {
+                if parents.len() > 0
+                {
+                    let parent = parents[parents.len()-1].clone();
+
+                    if parent == "ScreenWidth"
+                    {
+                        if let Ok(width) = u32::from_str_radix(&string, 10)
+                        {
+                            screen_width = Some(width);
+                        }
+                    }
+                    else if parent == "ScreenHeight"
+                    {
+                        if let Ok(height) = u32::from_str_radix(&string, 10)
+                        {
+                            screen_height = Some(height);
+                        }
+                    }
+                }
+            },
+            Ok(XmlEvent::EndElement { .. }) =>
+            {
+                parents.pop();
+            },
+            _ => ()
+        }
+    }
+    if let Some(width) = screen_width
+    {
+        if let Some(height) = screen_height
+        {
+            if let Ok(window_pos) = get_position()
+            {
+                let height_difference = window_pos.height - height as f64;
+                return Ok(WindowPosition { x: window_pos.x, y: window_pos.y + height_difference, width: width as f64, height: height as f64 });
+            }
+        }
+    }
+    Err(io::Error::new(io::ErrorKind::InvalidData, "Could not find resolution in display settings file"))
+}
+
+fn get_game_position() -> Result<WindowPosition, io::Error>
+{
+    if let Some(appdata_path) = var_os("APPDATA").map(PathBuf::from)
+    {
+        if let Some(display_settings_path) = appdata_path.parent()
+        {
+            let display_settings = display_settings_path.join(PathBuf::from("Local\\Frontier Developments\\Elite Dangerous\\Options\\Graphics\\DisplaySettings.xml"));
+            return get_resolution_from_settings(display_settings);
+        }
+        else
+        {
+            println!("Could not find DisplaySettings.xml");
+        }
+    }
+    else
+    {
+        println!("Could not find DisplaySettings.xml");
+    }
+    Err(io::Error::new(io::ErrorKind::InvalidData, "x"))
+}
+
+fn get_window_position() -> Result<WindowPosition, io::Error>
+{
+    if let Ok(position) = get_game_position()
+    {
+        Ok(position)
+    }
+    else if let Ok(position) = get_position()
+    {
+        Ok(position)
+    }
+    else
+    {
+        Err(io::Error::new(io::ErrorKind::InvalidData, "x"))
+    }
+}
+
 pub struct MacroChannels
 {
     pub fc_route_cancel: Option<mpsc::Sender<bool>>,
@@ -467,15 +564,18 @@ fn left_click(x: f64, y: f64)
 {
     check_elite_focused();
     // translate coordinates to window
-    if let Ok(window) = get_active_window()
+    if let Ok(position) = get_window_position()
     {
+        // println!("({}, {}), {}x{}", position.x, position.y, position.width, position.height);
         inputbot::MouseCursor::move_abs(
-            (window.position.x + x * window.position.width) as i32,
-            (window.position.y + y * window.position.height) as i32);
+            (position.x + x * position.width) as i32,
+            (position.y + y * position.height) as i32);
         inputbot::MouseButton::LeftButton.press();
         sleep_ms(100);
+        check_elite_focused();
         inputbot::MouseButton::LeftButton.release();
         sleep_ms(100);
+        check_elite_focused();
     }
 }
 
@@ -638,29 +738,23 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                         {
                             // if we are not already jumping to target, plot a course
                             println!("Plotting a course for {}...", clipboard);
-                            // get active window coordinates
-                            if let Ok(window) = get_active_window()
-                            {
-                                let pos_x = window.position.x as i32;
-                                let pos_y = window.position.y as i32;
-                                let res_x = window.position.width as i32;
-                                let res_y = window.position.height as i32;
 
-                                // click system search bar
-                                // left_click(pos_x + res_x / 2, pos_y + res_y / 8);
-                                left_click(0.5, 0.125);
-                                // paste system name
-                                LControlKey.press();
-                                press_key(VKey, 1);
-                                LControlKey.release();
-                                // wait for results
-                                sleep_ms(1000);
-                                // click on first result
-                                // left_click(res_x / 2, res_y / 7);
-                                left_click(0.5, 0.143);
-                                // left_click(res_x / 4 * 3, res_y / 8 * 3);
-                                left_click(0.75, 0.375);
-                            }
+                            // click system search bar
+                            // left_click(pos_x + res_x / 2, pos_y + res_y / 8);
+                            left_click(0.5, 0.125);
+                            // left_click(0.5, 0.125);
+                            // paste system name
+                            LControlKey.press();
+                            press_key(VKey, 1);
+                            LControlKey.release();
+                            // wait for results
+                            sleep_ms(1000);
+                            // click on first result
+                            // left_click(res_x / 2, res_y / 7);
+                            left_click(0.5, 0.143);
+                            // left_click(0.5, 0.143);
+                            // left_click(res_x / 4 * 3, res_y / 8 * 3);
+                            left_click(0.75, 0.375);
 
                             // wait for carrier jump request
                             let mut timeout = 0;

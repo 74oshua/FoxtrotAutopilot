@@ -136,7 +136,7 @@ impl JournalReader
             {
                 // append journal directory to $USERPROFILE to get full journal path
                 let mut journal_dir: String = home_str.to_owned();
-                journal_dir.push_str("\\Saved Games\\Frontier Developments\\Elite Dangerous\\Journal.*.log");
+                journal_dir.push_str("\\Saved Games\\Frontier Developments\\Elite Dangerous\\Journal.*-*-*.*.log");
                 // get a list of every journal file in the journal directory
                 if let Ok(journal_files) = glob(&journal_dir[..])
                 {

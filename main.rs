@@ -34,12 +34,13 @@ impl App
     {
         // splash screen
         println!("--------------------------------------------");
-        println!("FOXTROT AUTOPILOT v0.1.4");
+        println!("FOXTROT AUTOPILOT v0.1.5");
         println!("by 74oshua");
         println!("");
         println!("Press F3 to toggle Fleet Carrier Autopilot");
         println!("Ensure the correct route has been imported into SrvSurvey");
         println!("Ensure you're in a ship with cargo space if you will need to load tritium");
+        println!("Ensure tritium is the only commodity for sale");
         println!("Note: You may have leftover tritium in your inventory when the route is complete");
         println!("--------------------------------------------");
 
