@@ -2,9 +2,10 @@ use std::thread::{self, sleep};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::game_state::{GameState, Carrier, CarrierType};
 use crate::key_macros::MacroChannels;
-use crate::{journal::{GameState, JournalReader}};
-use winit::window::Window;
+use crate::market::MarketReader;
+use crate::{journal::JournalReader};
 use winit::{application::ApplicationHandler, event::{self, DeviceEvent, RawKeyEvent}, event_loop::{self, ActiveEventLoop, EventLoop} };
 use winit::event::{ElementState, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -12,6 +13,8 @@ use std::sync::mpsc;
 
 mod journal;
 mod key_macros;
+mod market;
+mod game_state;
 
 #[derive(Default)]
 struct App
@@ -34,13 +37,12 @@ impl App
     {
         // splash screen
         println!("--------------------------------------------");
-        println!("FOXTROT AUTOPILOT v0.1.5");
+        println!("FOXTROT AUTOPILOT v{}", env!("CARGO_PKG_VERSION"));
         println!("by 74oshua");
         println!("");
         println!("Press F3 to toggle Fleet Carrier Autopilot");
         println!("Ensure the correct route has been imported into SrvSurvey (from https://spansh.uk/fleet-carrier)");
-        println!("Ensure you're in a ship with cargo space if you will need to load tritium");
-        println!("Ensure tritium is the only commodity for sale");
+        println!("Ensure your carrier sells tritium, and that you're in a ship with cargo space if you will need to load tritium");
         println!("Note: You may have leftover tritium in your inventory when the route is complete");
         println!("--------------------------------------------");
 
@@ -48,11 +50,17 @@ impl App
         let game_state = Arc::clone(&self.game_state_mutex);
         thread::spawn(move || {
             let game_state = &game_state;
-            if let Ok(mut journal_reader) = JournalReader::new()
+            if let Ok(mut journal_reader) = JournalReader::new() && let Ok(mut market) = MarketReader::new()
             {
                 let mut current = false;
                 loop
                 {
+                    // update market
+                    if let Err(_) = market.update_market(&game_state)
+                    {
+                        println!("Error getting market");
+                    }
+                    // update journal
                     if let Err(_) = journal_reader.update_journal(&game_state)
                     {
                         print!("Error reading journal");

@@ -2,7 +2,7 @@ use std::{env::var_os, io::BufReader, path::{PathBuf}, thread::sleep, time::Dura
 use std::sync::{Arc, Mutex};
 use active_win_pos_rs::*;
 
-use crate::{journal::{GameState}};
+use crate::GameState;
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use inputbot::{KeybdKey};
 use inputbot::KeybdKey::*;
@@ -819,7 +819,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             if last_game_state.music_track != "FleetCarrier_Managment" && last_game_state.music_track != "GalaxyMap"
             {
                 // load tritium until fuel is above 300
-                // println!("Loading tritium");
+                println!("Loading tritium");
                 let mut low_fuel = true;
                 let mut timeout = 0;
                 while low_fuel && timeout < 5
@@ -845,31 +845,43 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                         press_key(bindings.select, 1);
                         sleep_ms(1000);
                         
-                        // buy as much tritium as possible
-                        press_key(bindings.right, 1);
-                        press_key(bindings.select, 1);
-                        hold_key(bindings.right, 1, 3000);
-                        press_key(bindings.down, 1);
-                        press_key(bindings.select, 1);
-                        sleep_ms(1000);
-                        press_key(bindings.back, 1);
-                        sleep_ms(1000);
-                        press_key(bindings.back, 1);
-                        sleep_ms(1000);
-                        press_key(bindings.back, 1);
-                        sleep_ms(1000);
+                        // get position of tritium on list
+                        if let Some(market) = last_game_state.market
+                        {
+                            if let Some(tritium_position) = market.items.iter().position(|item| item.name == "$tritium_name;")
+                            {
+                                // move over to commodities list
+                                press_key(bindings.right, 1);
 
-                        // load tritium in carrier
-                        press_key(bindings.select, 1);
-                        sleep_ms(5000);
-                        press_key(bindings.down, 2);
-                        press_key(bindings.select, 1);
-                        sleep_ms(1000);
-                        press_key(bindings.select, 1);
-                        sleep_ms(1000);
-                        press_key(bindings.up, 1);
-                        press_key(bindings.select, 1);
-                        sleep_ms(3000);
+                                // navigate down to tritium on the list
+                                press_key(bindings.down, tritium_position);
+
+                                press_key(bindings.select, 1);
+                                hold_key(bindings.right, 1, 3000);
+                                press_key(bindings.down, 1);
+                                press_key(bindings.select, 1);
+                                sleep_ms(1000);
+                                press_key(bindings.back, 1);
+                                sleep_ms(1000);
+                                press_key(bindings.back, 1);
+                                sleep_ms(1000);
+                                press_key(bindings.back, 1);
+                                sleep_ms(1000);
+
+                                // load tritium in carrier
+                                press_key(bindings.select, 1);
+                                sleep_ms(5000);
+                                press_key(bindings.down, 2);
+                                press_key(bindings.select, 1);
+                                sleep_ms(1000);
+                                press_key(bindings.select, 1);
+                                sleep_ms(1000);
+                                press_key(bindings.up, 1);
+                                press_key(bindings.select, 1);
+                                sleep_ms(3000);
+                            }
+                        }
+
 
                         // exit to docking menu
                         press_key(bindings.back, 1);
