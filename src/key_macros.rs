@@ -641,7 +641,7 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             }
 
             // if not docked with carrier, wait until we are
-            if !last_game_state.docked || (last_game_state.docked_station_type != Some("FleetCarrier".to_string()) && last_game_state.docked_station_type != Some("FleetCarrier".to_string()))
+            if !last_game_state.docked || (last_game_state.docked_station_type != Some("FleetCarrier".to_string()) && last_game_state.docked_station_type != Some("SquadronCarrier".to_string()))
             {
                 println!("Not docked with carrier, waiting for docking...");
                 while !last_game_state.docked || (last_game_state.docked_station_type != Some("FleetCarrier".to_string()) && last_game_state.docked_station_type != Some("SquadronCarrier".to_string()))
