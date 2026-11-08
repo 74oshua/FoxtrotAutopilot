@@ -939,4 +939,41 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             }
         }
     }
+    else
+    {
+        println!("Cannot get clipboard context");
+    }
+}
+
+pub fn auto_trade(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: mpsc::Receiver<bool>)
+{
+    // get gamestate
+    let mut last_game_state = GameState::new();
+    if let Ok(game_state) = game_state_mutex.lock()
+    {
+        last_game_state = game_state.clone();
+    }
+
+    loop
+    {
+        // if not docked, wait until we are
+        if !last_game_state.docked
+        {
+            println!("Not docked, waiting for docking...");
+            while !last_game_state.docked
+            {
+                if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
+                {
+                    last_game_state = game_state;
+                }
+                else
+                {
+                    return;
+                }
+                sleep_ms(100);
+            }
+            println!("Docking detected, beginning route...");
+            sleep_ms(10000);
+        }
+    }
 }
