@@ -15,4 +15,4 @@ xml = "1.4.0"
 
 [[bin]]
 name = "foxtrot"
-path = "main.rs"
+path = "src/main.rs"
