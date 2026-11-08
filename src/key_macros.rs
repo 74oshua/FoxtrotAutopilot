@@ -2,7 +2,7 @@ use std::{env::var_os, io::BufReader, path::{PathBuf}, thread::sleep, time::Dura
 use std::sync::{Arc, Mutex};
 use active_win_pos_rs::*;
 
-use crate::GameState;
+use crate::{GameState, game_state::CarrierType};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use inputbot::{KeybdKey};
 use inputbot::KeybdKey::*;
@@ -637,14 +637,14 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             // lock gamestate
             if let Ok(game_state) = game_state_mutex.lock()
             {
-                last_game_state = game_state.clone();
+                last_game_state = game_state.to_owned();
             }
 
             // if not docked with carrier, wait until we are
-            if !last_game_state.docked || (last_game_state.docked_station_type != Some("FleetCarrier".to_string()) && last_game_state.docked_station_type != Some("SquadronCarrier".to_string()))
+            if !last_game_state.docked || last_game_state.docked_station_type != Some("FleetCarrier".to_string())
             {
                 println!("Not docked with carrier, waiting for docking...");
-                while !last_game_state.docked || (last_game_state.docked_station_type != Some("FleetCarrier".to_string()) && last_game_state.docked_station_type != Some("SquadronCarrier".to_string()))
+                while !last_game_state.docked || last_game_state.docked_station_type != Some("FleetCarrier".to_string())
                 {
                     if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
                     {
@@ -818,11 +818,11 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
             // if in docking menu after carrier jump requested
             if last_game_state.music_track != "FleetCarrier_Managment" && last_game_state.music_track != "GalaxyMap"
             {
-                // load tritium until fuel is above 300
+                // load tritium
                 println!("Loading tritium");
-                let mut low_fuel = true;
+                let mut load_tritium = true;
                 let mut timeout = 0;
-                while low_fuel && timeout < 5
+                while load_tritium && timeout < 5
                 {
                     if let Some(game_state) = check_journal(&game_state_mutex, &cancel_channel)
                     {
@@ -838,50 +838,67 @@ pub fn fc_auto_route(game_state_mutex: &Arc<Mutex<GameState>>, cancel_channel: m
                     {
                         if let Some(docked_carrier) = last_game_state.carriers.get(&docked_carrier_id)
                         {
-                            low_fuel = docked_carrier.fuel_level < 300;
-                        }
-                        // open commodities market
-                        press_key(bindings.right, 2);
-                        press_key(bindings.select, 1);
-                        sleep_ms(1000);
-                        
-                        // get position of tritium on list
-                        if let Some(market) = last_game_state.market
-                        {
-                            if let Some(tritium_position) = market.items.iter().position(|item| item.name == "$tritium_name;")
+                            // open commodities market
+                            match docked_carrier.carrier_type
                             {
-                                // move over to commodities list
-                                press_key(bindings.right, 1);
+                                CarrierType::FleetCarrier =>
+                                {
+                                    press_key(bindings.right, 2);
+                                    press_key(bindings.select, 1);
+                                },
+                                // location is different for squadron carriers
+                                CarrierType::SquadronCarrier =>
+                                {
+                                    press_key(bindings.right, 1);
+                                    press_key(bindings.down, 1);
+                                    press_key(bindings.select, 1);
+                                },
+                                _ => ()
+                            }
+                            sleep_ms(1000);
+                        
+                            // get position of tritium on list
+                            if let Some(market) = last_game_state.market
+                            {
+                                if let Some(tritium_position) = market.items.iter().position(|item| item.name == "$tritium_name;")
+                                {
+                                    // move over to commodities list
+                                    press_key(bindings.right, 1);
 
-                                // navigate down to tritium on the list
-                                press_key(bindings.down, tritium_position);
+                                    // navigate down to tritium on the list
+                                    press_key(bindings.down, tritium_position);
 
-                                press_key(bindings.select, 1);
-                                hold_key(bindings.right, 1, 3000);
-                                press_key(bindings.down, 1);
-                                press_key(bindings.select, 1);
-                                sleep_ms(1000);
-                                press_key(bindings.back, 1);
-                                sleep_ms(1000);
-                                press_key(bindings.back, 1);
-                                sleep_ms(1000);
-                                press_key(bindings.back, 1);
-                                sleep_ms(1000);
+                                    press_key(bindings.select, 1);
+                                    hold_key(bindings.right, 1, 3000);
+                                    press_key(bindings.down, 1);
+                                    press_key(bindings.select, 1);
+                                    sleep_ms(1000);
+                                    press_key(bindings.back, 1);
+                                    sleep_ms(1000);
+                                    press_key(bindings.back, 1);
+                                    sleep_ms(1000);
+                                    press_key(bindings.back, 1);
+                                    sleep_ms(1000);
 
-                                // load tritium in carrier
-                                press_key(bindings.select, 1);
-                                sleep_ms(5000);
-                                press_key(bindings.down, 2);
-                                press_key(bindings.select, 1);
-                                sleep_ms(1000);
-                                press_key(bindings.select, 1);
-                                sleep_ms(1000);
-                                press_key(bindings.up, 1);
-                                press_key(bindings.select, 1);
-                                sleep_ms(3000);
+                                    // load tritium in carrier
+                                    press_key(bindings.select, 1);
+                                    sleep_ms(5000);
+                                    press_key(bindings.down, 2);
+                                    press_key(bindings.select, 1);
+                                    sleep_ms(1000);
+                                    press_key(bindings.select, 1);
+                                    sleep_ms(1000);
+                                    press_key(bindings.up, 1);
+                                    press_key(bindings.select, 1);
+                                    sleep_ms(3000);
+                                }
+                                // tritium is not being sold
+                                else
+                                {
+                                    load_tritium = false;
+                                }
                             }
                         }
-
 
                         // exit to docking menu
                         press_key(bindings.back, 1);

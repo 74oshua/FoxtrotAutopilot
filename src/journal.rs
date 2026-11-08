@@ -262,7 +262,6 @@ impl JournalReader
                                 {
                                     if let Some(station_type) = event.station_type
                                     {
-                                        game_state.docked_station_type = Some(station_type.clone());
                                         if station_type == "FleetCarrier" || station_type == "SquadronCarrier"
                                         {
                                             for carrier in &game_state.carriers
@@ -274,6 +273,7 @@ impl JournalReader
                                                 }
                                             }
                                         }
+                                        game_state.docked_station_type = Some(station_type);
                                     }
                                     game_state.station_name = Some(station_name);
                                 }
